@@ -60,10 +60,17 @@ jobs:
           if [ -z "$t" ]; then
             continue
           fi
+          
+          # Detect if target is ESP32-P4 (which lacks Wi-Fi/networking)
+          NO_NETWORKING=""
+          if grep -q "esp32p4" "components/retro-go/targets/$t/env.py" 2>/dev/null; then
+            NO_NETWORKING="--no-networking"
+          fi
+
           echo "=========================================="
-          echo "Building target: $t"
+          echo "Building target: $t $NO_NETWORKING"
           echo "=========================================="
-          docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$t release && cp *.img /output/ 2>/dev/null || true"
+          docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$t $NO_NETWORKING release && cp *.img /output/ 2>/dev/null || true"
         done
 
     - name: Upload firmware images
