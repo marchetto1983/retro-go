@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Target device to build (e.g., cyd, esp32-s3-devkit, esp32-p4-devkit, odroid-go, or "all")'
+        description: 'Target device(s) to build (e.g., cyd, "cyd, gb300-p4", or "all")'
         required: true
         default: 'all'
         type: string
@@ -39,28 +39,37 @@ jobs:
     - name: Compile target firmware image
       run: |
         mkdir -p output
-        TARGET="${{ inputs.target }}"
-        if [ "$TARGET" = "all" ]; then
+        INPUT_TARGETS="${{ inputs.target }}"
+        if [ "$INPUT_TARGETS" = "all" ]; then
           echo "Building all targets..."
+          TARGETS=""
           for target_path in components/retro-go/targets/*/; do
             t=$(basename "$target_path")
-            if [ "$t" = "sdl2" ]; then
-              continue
+            if [ "$t" != "sdl2" ]; then
+              TARGETS="$TARGETS $t"
             fi
-            echo "=========================================="
-            echo "Building target: $t"
-            echo "=========================================="
-            docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$t release && cp *.img /output/ 2>/dev/null || true"
           done
         else
-          echo "Building target: $TARGET"
-          docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$TARGET release && cp *.img /output/ 2>/dev/null || true"
+          # Replace commas with spaces to support comma-separated or space-separated lists
+          TARGETS=$(echo "$INPUT_TARGETS" | tr ',' ' ')
         fi
+
+        for t in $TARGETS; do
+          # Trim whitespace
+          t=$(echo "$t" | xargs)
+          if [ -z "$t" ]; then
+            continue
+          fi
+          echo "=========================================="
+          echo "Building target: $t"
+          echo "=========================================="
+          docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$t release && cp *.img /output/ 2>/dev/null || true"
+        done
 
     - name: Upload firmware images
       uses: actions/upload-artifact@v4
       with:
-        name: retro-go-images-${{ inputs.target }}
+        name: retro-go-images
         path: output/*.img
         if-no-files-found: error
 
