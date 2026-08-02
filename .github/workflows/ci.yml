@@ -1,8 +1,13 @@
-name: ci
+name: Build Retro-Go
 
 on:
-  workflow_dispatch:      # Start a workflow
-  push:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target device to build (e.g., cyd, esp32-s3-devkit, esp32-p4-devkit, odroid-go, or "all")'
+        required: true
+        default: 'all'
+        type: string
 
 jobs:
   build:
@@ -22,7 +27,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build
+    - name: Build Docker environment
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -31,12 +36,31 @@ jobs:
         cache-to: type=gha,mode=max
         load: true
 
-    - name: Extract binaries from docker image
+    - name: Compile target firmware image
       run: |
-        docker run --rm -v $(pwd)/build:/build retro-go:latest sh -c "cp /app/*.fw /build"
+        mkdir -p output
+        TARGET="${{ inputs.target }}"
+        if [ "$TARGET" = "all" ]; then
+          echo "Building all targets..."
+          for target_path in components/retro-go/targets/*/; do
+            t=$(basename "$target_path")
+            if [ "$t" = "sdl2" ]; then
+              continue
+            fi
+            echo "=========================================="
+            echo "Building target: $t"
+            echo "=========================================="
+            docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$t release && cp *.img /output/ 2>/dev/null || true"
+          done
+        else
+          echo "Building target: $TARGET"
+          docker run --rm -v $(pwd)/output:/output retro-go:latest bash -c ". /opt/esp/idf/export.sh && python rg_tool.py --target=$TARGET release && cp *.img /output/ 2>/dev/null || true"
+        fi
 
-    - name: Upload artifacts
+    - name: Upload firmware images
       uses: actions/upload-artifact@v4
       with:
-        name: binaries
-        path: build/*.fw
+        name: retro-go-images-${{ inputs.target }}
+        path: output/*.img
+        if-no-files-found: error
+
